@@ -1,0 +1,4 @@
+mkdir aws-central-backup
+cd aws-central-backup
+cdk init app --language python
+pip install aws-cdk-lib aws-cdk.aws-backup aws-cdk.aws-iam aws-cdk.aws-organizations
