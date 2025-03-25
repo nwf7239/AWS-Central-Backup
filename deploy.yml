@@ -1,37 +1,76 @@
-# .github/workflows/deploy-backup.yml
-name: Deploy Backup Solution
+name: Deploy AWS Central Backup
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  CENTRAL_ACCOUNT_ID: ${{ secrets.AWS_CENTRAL_ACCOUNT_ID }}
+  MEMBER_ACCOUNT_ID: ${{ secrets.AWS_MEMBER_ACCOUNT_ID }}
 
 jobs:
-  deploy:
+  deploy-central:
+    name: Deploy to Central Account
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        account-type: ['central', 'member']
+    environment: production
     
     steps:
-      - uses: actions/checkout@v3
+    - name: Checkout
+      uses: actions/checkout@v3
       
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          
-      - run: npm ci
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Configure AWS Credentials (Central)
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_CENTRAL }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_CENTRAL }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: CDK Synth
+      run: cdk synth
       
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets[format('%s_AWS_ACCESS_KEY_ID', matrix.account-type)] }}
-          aws-secret-access-key: ${{ secrets[format('%s_AWS_SECRET_ACCESS_KEY', matrix.account-type)] }}
-          aws-region: us-east-1
-          
-      - name: Deploy Stack
-        run: |
-          if [ "${{ matrix.account-type }}" == "central" ]; then
-            npx cdk deploy CentralBackupStack
-          else
-            npx cdk deploy MemberBackupStack
-          fi
+    - name: CDK Deploy
+      run: cdk deploy --require-approval never
+      
+  deploy-member:
+    name: Deploy to Member Account
+    needs: deploy-central
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Configure AWS Credentials (Member)
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_MEMBER }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_MEMBER }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: CDK Synth
+      run: cdk synth
+      
+    - name: CDK Deploy
+      run: cdk deploy --require-approval never
