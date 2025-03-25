@@ -1,43 +1,17 @@
-name: Deploy AWS Central Backup
+# .github/workflows/deploy-backup.yml
+name: Deploy Backup Solution
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
-
-env:
-  AWS_REGION: us-east-1
-  CENTRAL_ACCOUNT_ID: ${{ secrets.CENTRAL_AWS_ACCOUNT_ID }}
-  MEMBER_ACCOUNT_IDS: ${{ secrets.MEMBER_AWS_ACCOUNT_IDS }}
+    branches: [main]
 
 jobs:
-  deploy-central:
-    name: Deploy to Central Account
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          
-      - run: npm ci
-      
-      - uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.CENTRAL_AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.CENTRAL_AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-          
-      - run: npx cdk deploy CentralBackupStack --require-approval never
-
-  deploy-members:
-    name: Deploy to Member Accounts
-    needs: deploy-central
+  deploy:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        account: ${{ fromJson(env.MEMBER_ACCOUNT_IDS) }}
+        account-type: ['central', 'member']
+    
     steps:
       - uses: actions/checkout@v3
       
@@ -47,12 +21,17 @@ jobs:
           
       - run: npm ci
       
-      - uses: aws-actions/configure-aws-credentials@v2
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets[format('MEMBER_{0}_AWS_ACCESS_KEY_ID', matrix.account)] }}
-          aws-secret-access-key: ${{ secrets[format('MEMBER_{0}_AWS_SECRET_ACCESS_KEY', matrix.account)] }}
-          aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: ${{ secrets[format('MEMBER_{0}_AWS_ROLE_ARN', matrix.account)] }}
-          role-session-name: GitHubActions
+          aws-access-key-id: ${{ secrets[format('%s_AWS_ACCESS_KEY_ID', matrix.account-type)] }}
+          aws-secret-access-key: ${{ secrets[format('%s_AWS_SECRET_ACCESS_KEY', matrix.account-type)] }}
+          aws-region: us-east-1
           
-      - run: npx cdk deploy MemberBackupStack --require-approval never
+      - name: Deploy Stack
+        run: |
+          if [ "${{ matrix.account-type }}" == "central" ]; then
+            npx cdk deploy CentralBackupStack
+          else
+            npx cdk deploy MemberBackupStack
+          fi
